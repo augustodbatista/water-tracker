@@ -1,0 +1,6 @@
+# Common Hurdle #5: sem isso, CRLF do Windows vira diff falso e quebra o job Linux da CI.
+* text=auto eol=lf
+
+*.png binary
+*.jar binary
+*.zip binary
