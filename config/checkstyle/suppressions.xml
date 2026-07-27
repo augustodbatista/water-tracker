@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+
+  <!--
+    Common Hurdle #11.
+
+    google_checks aplica AbbreviationAsWordInName (maximo 1 maiuscula consecutiva).
+    Nossa convencao de nome de teste e em portugues, no formato
+    deve<Comportamento>Quando<Condicao> - e a conjuncao "E" seguida de outra palavra
+    capitalizada ("...DataEVolume...") dispara a regra em todo teste que descreve
+    duas coisas.
+
+    Suprimido SOMENTE em codigo de teste, SOMENTE esta regra. Codigo de producao
+    continua sob a regra completa, onde ela protege de verdade contra siglas
+    como HTTPResponseXMLParser.
+  -->
+  <suppress files="[\\/]src[\\/]test[\\/]" checks="AbbreviationAsWordInName"/>
+
+</suppressions>

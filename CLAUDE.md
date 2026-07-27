@@ -22,7 +22,7 @@ Princípios que governam decisões de produto:
 
 | Camada | Escolha | Versão | Por quê |
 |---|---|---|---|
-| Linguagem | Java | `release=21` (LTS) | Roda no Zulu 25 local e é o `openjdk-21-jdk` padrão do Pop!_OS |
+| Linguagem | Java | **JDK 21** (`release=21`) | É o `openjdk-21-jdk` padrão do Pop!_OS. **Compilar e rodar o build com JDK 21, não com o Zulu 25** — ver Hurdle #12 |
 | UI | **Swing** | JDK | Já vem no JDK: zero dependência por plataforma. JavaFX exigiria artefatos win/linux separados |
 | Persistência | **JSON** (Gson) | *a introduzir no ciclo 2* | ~10 registros/dia. SQLite traria binário nativo por plataforma para guardar `data + ml` |
 | Build | Maven | 3.9.16 | — |
@@ -48,18 +48,35 @@ Princípios que governam decisões de produto:
 
 ### Rodando localmente
 
-Maven não está no `PATH` (ver Hurdle #8). Para adicionar de forma permanente ao usuário:
+Nem Maven nem o JDK 21 estão no `PATH` (ver Hurdles #8 e #12). Ambos foram instalados como zip
+portável, com checksum conferido, em `%USERPROFILE%\tools\` — sem admin, e some apagando a pasta.
+
+**Windows** — para tornar permanente (uma vez só):
 
 ```bash
-setx PATH "$env:PATH;$env:USERPROFILE\tools\apache-maven-3.9.16\bin"
+setx JAVA_HOME "$env:USERPROFILE\tools\jdk-21.0.11+10"; setx PATH "$env:PATH;$env:USERPROFILE\tools\apache-maven-3.9.16\bin;$env:USERPROFILE\tools\jdk-21.0.11+10\bin"
 ```
 
-No Pop!_OS: `sudo apt install maven openjdk-21-jdk`.
+**Pop!_OS:**
+
+```bash
+sudo apt install maven openjdk-21-jdk
+```
 
 Comando único que a CI e você rodam — se ele passa, o commit é entregável:
 
 ```bash
 mvn clean verify
+```
+
+Antes de confiar no resultado, confira no log **as quatro linhas** que provam que os gates rodaram
+de fato, e não por vacuidade (Hurdle #10):
+
+```
+You have 0 Checkstyle violations.
+Tests run: N, Failures: 0, Errors: 0, Skipped: 0
+All coverage checks have been met.
+BugInstance size is 0
 ```
 
 ## 4. Estrutura de diretórios
@@ -119,13 +136,15 @@ e questione.
 | 7 | Mutação de UI Swing fora da EDT trava ou pisca a janela. | Toda mutação dentro de `SwingUtilities.invokeLater`. *(ciclo 3)* |
 | 8 | **`winget` não distribui o Apache Maven** — `winget install Apache.Maven` retorna "No package found". | Zip portável oficial extraído em `%USERPROFILE%\tools\apache-maven-3.9.16`, **com SHA512 conferido**. Não precisa de admin e some apagando a pasta. |
 | 9 | OWASP Dependency-Check dentro do `mvn verify` exige NVD API key e baixa uma base grande: a CI fica vermelha por falha de rede, não por bug. Isso corrói a confiança na regra "CI verde em todo commit". | Auditoria de dependências fica no **Dependabot** (fora do build). Reavaliar se o projeto passar a ter dependências de superfície relevante. |
-| 10 | **Projeto vazio deixa os gates verdes por vacuidade**: JaCoCo e SpotBugs logam `Skipping ... due to missing execution data` e o build passa. Um pipeline "verde" pode significar "não rodou nada". | Confirmar que cada gate **realmente morde** assim que houver a primeira classe: quebrar o teste de propósito uma vez e ver o build ficar vermelho. |
+| 10 | **Projeto vazio deixa os gates verdes por vacuidade**: JaCoCo e SpotBugs logam `Skipping ... due to missing execution data` e o build passa. Um pipeline "verde" pode significar "não rodou nada". | Cada gate foi verificado mordendo de verdade: Checkstyle reprovou 2 violações reais; o compilador reprovou o RED; JaCoCo reprovou com `lines covered ratio is 0.42, but expected minimum is 0.85`. Repetir essa prova sempre que um gate for adicionado ou reconfigurado. |
+| 11 | `AbbreviationAsWordInName` do google_checks (máx. 1 maiúscula consecutiva) reprova nossa convenção de nome de teste em português: a conjunção "E" seguida de palavra capitalizada (`...DataEVolume...`) dispara em todo teste que descreve duas coisas. | `config/checkstyle/suppressions.xml` suprime **só essa regra**, **só em `src/test/`**. Produção continua sob a regra completa, onde ela protege de verdade (`HTTPResponseXMLParser`). Ligado via `suppressionsFileExpression` = `org.checkstyle.google.suppressionfilter.config` — google_checks lê dessa propriedade, não da padrão do plugin. |
+| 12 | **SpotBugs quebra sob JDK 25**: `Unsupported class file major version 69` ao escanear `java.lang.*`. O ASM embutido no SpotBugs 4.9.3.0 ainda não lê bytecode do Java 25. Pior: o build passava em Checkstyle, testes e cobertura antes de estourar — dava a impressão de que só o SAST estava com problema, quando a causa era divergência de ambiente. | **Rodar o build com JDK 21 localmente**, igual à CI. Zip portável do Temurin 21 em `%USERPROFILE%\tools\jdk-21.0.11+10`. A lição maior: `release=21` garante o *bytecode gerado*, mas **não** a versão do JDK que as ferramentas de build enxergam. "Passou na minha máquina" com JDK diferente da CI não vale nada. |
 
 ## 8. Pipeline principal do sistema
 
 ```
 Clique "+250 ml"
-  → WaterEntry.of(hoje, 250)          valida faixa e nulos; lança InvalidVolumeException
+  → new WaterEntry(hoje, 250)         valida faixa e nulos; lança InvalidVolumeException
   → IntakeRepository.save(entry)      escrita atômica: temp + ATOMIC_MOVE
   → DailyIntake.totalFor(hoje)        soma acumulada em long (evita overflow)
   → atualiza barra de progresso       dentro de SwingUtilities.invokeLater

@@ -86,6 +86,10 @@
                zero manutencao. Supressoes pontuais, se precisarem existir, vao em
                config/checkstyle/suppressions.xml - nunca desligando o plugin. -->
           <configLocation>google_checks.xml</configLocation>
+          <suppressionsLocation>config/checkstyle/suppressions.xml</suppressionsLocation>
+          <!-- google_checks.xml le o arquivo de supressoes desta propriedade especifica,
+               nao da 'checkstyle.suppressions.file' padrao do plugin. -->
+          <suppressionsFileExpression>org.checkstyle.google.suppressionfilter.config</suppressionsFileExpression>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
           <consoleOutput>true</consoleOutput>
           <failOnViolation>true</failOnViolation>
