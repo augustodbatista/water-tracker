@@ -18,7 +18,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-    <junit.version>5.12.2</junit.version>
+    <junit.version>6.1.2</junit.version>
     <checkstyle.tool.version>10.26.1</checkstyle.tool.version>
     <findsecbugs.version>1.14.0</findsecbugs.version>
 
