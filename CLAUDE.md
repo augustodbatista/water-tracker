@@ -24,7 +24,7 @@ Princípios que governam decisões de produto:
 |---|---|---|---|
 | Linguagem | Java | **JDK 21** (`release=21`) | É o `openjdk-21-jdk` padrão do Pop!_OS. **Compilar e rodar o build com JDK 21, não com o Zulu 25** — ver Hurdle #12 |
 | UI | **Swing** | JDK | Já vem no JDK: zero dependência por plataforma. JavaFX exigiria artefatos win/linux separados |
-| Persistência | **JSON** (Gson) | *a introduzir no ciclo 2* | ~10 registros/dia. SQLite traria binário nativo por plataforma para guardar `data + ml` |
+| Persistência | **JSON** (Gson) | 2.14.0 | ~10 registros/dia. SQLite traria binário nativo por plataforma para guardar `data + ml`. Única dependência de produção, confinada a `storage/` |
 | Build | Maven | 3.9.16 | — |
 | Testes | JUnit Jupiter | 6.1.2 | via `junit-bom` |
 | Cobertura | JaCoCo | 0.8.15 | — |
@@ -106,7 +106,9 @@ e questione.
 | `WaterEntry` | *record* imutável (`LocalDate date`, `int milliliters`). Valida no construtor compacto | ciclo 1 |
 | `InvalidVolumeException` | Exceção de domínio nomeada — comunica *qual* regra foi violada | ciclo 1 |
 | `DailyIntake` | Agrega entradas de um dia: total e progresso vs. meta | ciclo 1 |
-| `IntakeRepository` | Interface. **Duas** implementações reais: `JsonIntakeRepository` (produção) e `InMemoryIntakeRepository` (testes) — não é abstração especulativa | ciclo 2 |
+| `JsonIntakeRepository` | Classe **concreta**, sem interface. O `@TempDir` do JUnit testa contra arquivo de verdade, então `InMemoryIntakeRepository` não teria usuário — seria abstração especulativa, contra a convenção 7. A interface nasce se e quando houver segunda implementação real | ciclo 2 |
+| `RegistroEmDisco` | *record* privado dentro de `JsonIntakeRepository`. Separa o contrato do arquivo do modelo de domínio — ver Hurdle #17 | ciclo 2 |
+| `CorruptedDataException` | Arquivo ilegível ou adulterado. Distingue *dado corrompido* de *falha de I/O*, que pedem respostas diferentes na UI | ciclo 2 |
 | `WaterTrackerWindow` | Janela Swing sem borda, always-on-top | ciclo 3 |
 
 ## 6. Design Patterns e convenções
@@ -139,6 +141,7 @@ e questione.
 | 10 | **Projeto vazio deixa os gates verdes por vacuidade**: JaCoCo e SpotBugs logam `Skipping ... due to missing execution data` e o build passa. Um pipeline "verde" pode significar "não rodou nada". | Cada gate foi verificado mordendo de verdade: Checkstyle reprovou 2 violações reais; o compilador reprovou o RED; JaCoCo reprovou com `lines covered ratio is 0.42, but expected minimum is 0.85`. Repetir essa prova sempre que um gate for adicionado ou reconfigurado. |
 | 11 | `AbbreviationAsWordInName` do google_checks (máx. 1 maiúscula consecutiva) reprova nossa convenção de nome de teste em português: a conjunção "E" seguida de palavra capitalizada (`...DataEVolume...`) dispara em todo teste que descreve duas coisas. | `config/checkstyle/suppressions.xml` suprime **só essa regra**, **só em `src/test/`**. Produção continua sob a regra completa, onde ela protege de verdade (`HTTPResponseXMLParser`). Ligado via `suppressionsFileExpression` = `org.checkstyle.google.suppressionfilter.config` — google_checks lê dessa propriedade, não da padrão do plugin. |
 | 14 | **`setx PATH "$env:PATH;..."` pode destruir o PATH.** Dois defeitos somados: dentro do PowerShell, `$env:PATH` é a concatenação do PATH *de sistema* com o *de usuário*, então gravá-lo no PATH do usuário duplica todas as entradas do sistema; e `setx` **trunca silenciosamente em 1024 caracteres**. O PATH de usuário desta máquina já tinha 1016 caracteres — faltavam 8 para a perda de dados. | Usar `[Environment]::SetEnvironmentVariable(...,'User')`, que não tem limite de tamanho, lendo o PATH de usuário com `GetEnvironmentVariable('Path','User')` e anexando apenas o que falta. Comando pronto na seção 3. |
+| 17 | **O Gson chama o construtor canônico do *record*, mas embrulha a exceção dele numa `java.lang.RuntimeException` crua.** Um `entries.json` editado à mão com `"milliliters": 0` dispara a `InvalidVolumeException` corretamente — e ela chega ao chamador irreconhecível, impossível de distinguir de um bug nosso. Capturar `RuntimeException` e inspecionar a causa dependeria de detalhe interno do Gson. | Desserializar para um **DTO de disco** (`RegistroEmDisco`, com `String`/`Integer` frouxos aceitando nulo) e converter para o domínio em código nosso, onde a validação lança exceção reconhecível. Bônus: dispensa o `TypeAdapter` de `LocalDate` (o DTO já guarda texto ISO) e desacopla o formato do arquivo da forma do *record* — renomear um componente deixa de quebrar arquivos existentes em silêncio. |
 | 16 | Dependabot abriu 7 PRs no primeiro push e **os do `pom.xml` conflitaram entre si**: os bumps mexem em linhas vizinhas do bloco `<properties>`, então mergear um invalida o merge do outro. Também revelou que a API `search.maven.org` devolve `latestVersion` desatualizado — ela reportou Checkstyle 10.26.1 quando o atual era 13.9.0, três majors à frente. | Mergear primeiro os que não colidem e resolver o resto localmente, num commit por dependência, cada um verificado com `mvn clean verify`. Para descobrir versão atual, **não** confiar na `search.maven.org`: usar o `maven-metadata.xml` do repositório ou deixar o Dependabot dizer. |
 | 15 | Mesmo com `JAVA_HOME` apontando para o JDK 21, `java` digitado no terminal resolve para o **Zulu 25**, porque `C:\Program Files\Zulu\zulu-25\bin\` vem antes no PATH. | Inofensivo para o build: o `mvn` usa `JAVA_HOME` e foi verificado rodando em `Java version: 21.0.11, Eclipse Adoptium`. Mas ao executar o jar à mão, chamar o `java` do JDK 21 pelo caminho completo — senão o app roda sob um runtime diferente do que a CI validou. |
 | 13 | SpotBugs acusa `EI_EXPOSE_REP` num *record* cujo componente `List` foi construído com `Stream.toList()` — ele não consegue provar que o resultado é imutável, mesmo sendo. | Construir com **`List.copyOf(...)`**, que o detector reconhece como imutável. Custo zero: `copyOf` devolve a própria instância quando ela já é imutável. **Não** suprimir o finding e **não** trocar por cópia defensiva no acessor (que seria pior e alocaria a cada chamada). |
@@ -149,7 +152,7 @@ e questione.
 ```
 Clique "+250 ml"
   → new WaterEntry(hoje, 250)         valida faixa e nulos; lança InvalidVolumeException
-  → IntakeRepository.save(entry)      escrita atômica: temp + ATOMIC_MOVE
+  → JsonIntakeRepository.save(entry)  escrita atômica: temp + ATOMIC_MOVE
   → DailyIntake.totalFor(hoje)        soma acumulada em long (evita overflow)
   → atualiza barra de progresso       dentro de SwingUtilities.invokeLater
 ```
@@ -182,12 +185,22 @@ Um commit só entra em `main` quando **todos** os itens abaixo forem verdade:
 Registrado explicitamente para que a regra "segurança é hábito" não vire cerimônia vazia:
 
 **Se aplica:**
-- Validação de entrada: volume nulo, zero, negativo, acima do teto sano
-- Overflow aritmético no somatório diário (acumular em `long`, não `int`)
-- Path traversal em `WATER_TRACKER_HOME` *(ciclo 2)*
-- Corrupção do arquivo por escrita concorrente de duas instâncias do widget *(ciclo 2)*
-- Parse de JSON malformado ou adulterado à mão pelo usuário *(ciclo 2)*
+- Validação de entrada: volume nulo, zero, negativo, acima do teto sano — *feito, ciclo 1*
+- Overflow aritmético no somatório diário (acumular em `long`, não `int`) — *feito, ciclo 1*
+- Parse de JSON malformado ou adulterado à mão pelo usuário — *feito, ciclo 2*. Arquivo em disco é
+  **entrada não confiável**: passa por DTO e revalida no domínio (Hurdle #17)
+- Truncamento do arquivo por queda no meio da gravação — *feito, ciclo 2*: temp + `ATOMIC_MOVE`
+- **Perda de registro** por escrita concorrente de duas instâncias — *pendente*. Atenção à
+  distinção: a troca atômica garante que o arquivo nunca fica corrompido, mas `save()` faz
+  ler-alterar-gravar, então dois widgets abertos podem sobrescrever o registro um do outro. É
+  perda de dado, não corrupção
 
 **Não se aplica** (app local, single-user, sem rede e sem servidor): SSRF, rate limiting,
-autenticação, autorização, CSRF, injeção de SQL, gestão de segredos. Se qualquer uma dessas
-passar a se aplicar, o motivo entra nesta seção **antes** do código correspondente.
+autenticação, autorização, CSRF, injeção de SQL, gestão de segredos.
+
+**Path traversal em `WATER_TRACKER_HOME` foi reavaliado e também não se aplica.** Traversal
+pressupõe entrada controlada por terceiro escapando de um sandbox. Aqui quem define a variável é o
+próprio dono da máquina, que já pode escrever onde quiser — não há fronteira de privilégio a
+atravessar. Validar que o caminho é utilizável faz sentido; construir defesa anti-traversal seria
+cerimônia. Se o app um dia rodar com privilégio diferente do usuário, ou ler essa configuração de
+fonte que não seja o próprio usuário, esta conclusão muda **antes** do código.
