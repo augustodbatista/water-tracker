@@ -1,5 +1,6 @@
 package io.github.augustodbatista.watertracker.ui;
 
+import io.github.augustodbatista.watertracker.storage.DailyGoalStore;
 import io.github.augustodbatista.watertracker.storage.JsonIntakeRepository;
 import javax.swing.SwingUtilities;
 
@@ -14,9 +15,10 @@ public final class WaterTrackerLauncher {
    * <p>Construir componentes Swing fora da Event Dispatch Thread trava ou faz a janela piscar —
    * Hurdle #7.
    *
-   * @param repositorio onde os registros são lidos e gravados
+   * @param registros onde os consumos são lidos e gravados
+   * @param metas onde a meta diária é lida e gravada
    */
-  public static void abrir(JsonIntakeRepository repositorio) {
-    SwingUtilities.invokeLater(() -> new WaterTrackerWindow(repositorio).setVisible(true));
+  public static void abrir(JsonIntakeRepository registros, DailyGoalStore metas) {
+    SwingUtilities.invokeLater(() -> new WaterTrackerWindow(registros, metas).setVisible(true));
   }
 }
