@@ -59,7 +59,8 @@ final class WaterTrackerWindow extends JFrame {
   private static final Color FUNDO = new Color(0x1B, 0x26, 0x32);
   private static final Color TEXTO = new Color(0xE8, 0xF1, 0xF8);
   private static final Color TEXTO_FRACO = new Color(0x8C, 0xA3, 0xB8);
-  private static final Color AGUA = new Color(0x35, 0x9E, 0xE0);
+  /** Azul royal (#4169E1) clareado. Usada nos botões, na barra de progresso e na gota. */
+  private static final Color AGUA = new Color(0x4A, 0x7B, 0xE8);
   private static final Color TRILHO = new Color(0x2A, 0x3A, 0x4A);
 
   private final transient JsonIntakeRepository registros;
