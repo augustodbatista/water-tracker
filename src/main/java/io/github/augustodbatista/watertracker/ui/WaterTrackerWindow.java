@@ -6,20 +6,28 @@ import io.github.augustodbatista.watertracker.storage.DailyGoalStore;
 import io.github.augustodbatista.watertracker.storage.JsonIntakeRepository;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
 import java.awt.Point;
+import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Area;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
 import java.time.LocalDate;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -86,10 +94,6 @@ final class WaterTrackerWindow extends JFrame {
     JPanel linha = new JPanel(new BorderLayout());
     linha.setOpaque(false);
 
-    JLabel titulo = new JLabel("Água hoje");
-    titulo.setForeground(TEXTO_FRACO);
-    titulo.setFont(titulo.getFont().deriveFont(Font.PLAIN, 11f));
-
     JPanel acoes = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
     acoes.setOpaque(false);
     // Corrigir fica fora da tela principal de proposito: um botao de apagar ao lado dos de
@@ -98,7 +102,6 @@ final class WaterTrackerWindow extends JFrame {
     acoes.add(icone("⚙", "Configurar meta diária", this::abrirConfiguracoes));
     acoes.add(icone("×", "Fechar", this::dispose));
 
-    linha.add(titulo, BorderLayout.WEST);
     linha.add(acoes, BorderLayout.EAST);
     return linha;
   }
@@ -137,6 +140,8 @@ final class WaterTrackerWindow extends JFrame {
     total.setForeground(TEXTO);
     total.setFont(total.getFont().deriveFont(Font.BOLD, 20f));
     total.setAlignmentX(CENTER_ALIGNMENT);
+    total.setIcon(new GotaDagua(13, 17, AGUA));
+    total.setIconTextGap(7);
 
     // Em retrato a janela e estreita: "4050 / 3500 ml" numa linha so ficaria mais largo que o
     // widget inteiro. Separado, o numero que importa fica grande e a meta vira legenda.
@@ -356,5 +361,59 @@ final class WaterTrackerWindow extends JFrame {
   private void posicionarNoCantoInferiorDireito() {
     var area = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
     setLocation(area.x + area.width - getWidth() - 24, area.y + area.height - getHeight() - 24);
+  }
+
+  /**
+   * Gota d'água desenhada, no lugar do emoji {@code 💧}.
+   *
+   * <p>Emoji do plano suplementar do Unicode não tem fallback confiável no Java2D: costuma
+   * renderizar no Windows e virar quadrado vazio no Pop!_OS, dependendo das fontes instaladas.
+   * Desenhar garante o mesmo resultado nos dois sistemas e acompanha a cor do tema.
+   */
+  private static final class GotaDagua implements Icon {
+
+    private final int largura;
+    private final int altura;
+    private final Color cor;
+
+    GotaDagua(int largura, int altura, Color cor) {
+      this.largura = largura;
+      this.altura = altura;
+      this.cor = cor;
+    }
+
+    @Override
+    public void paintIcon(Component componente, Graphics g, int x, int y) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+      // Circulo embaixo somado a um triangulo em cima. Uma curva simetrica dos dois lados daria
+      // uma folha, pontuda em cima e embaixo - gota e redonda na base.
+      double centro = x + largura / 2.0;
+      double baseDoTriangulo = y + altura - largura * 0.55;
+
+      Path2D ponta = new Path2D.Double();
+      ponta.moveTo(centro, y);
+      ponta.lineTo(x + largura, baseDoTriangulo);
+      ponta.lineTo(x, baseDoTriangulo);
+      ponta.closePath();
+
+      Area gota = new Area(new Ellipse2D.Double(x, y + altura - largura, largura, largura));
+      gota.add(new Area(ponta));
+
+      g2.setColor(cor);
+      g2.fill(gota);
+      g2.dispose();
+    }
+
+    @Override
+    public int getIconWidth() {
+      return largura;
+    }
+
+    @Override
+    public int getIconHeight() {
+      return altura;
+    }
   }
 }
