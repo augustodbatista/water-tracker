@@ -117,7 +117,7 @@ e questione.
 | `RegistroEmDisco` | *record* privado dentro de `JsonIntakeRepository`. Separa o contrato do arquivo do modelo de domínio — ver Hurdle #17 | ciclo 2 |
 | `DailyGoalStore` | Meta diária em `daily-goal.txt`. Ao contrário dos registros, arquivo ilegível aqui **não** lança exceção: cai no padrão. Travar o app por causa da meta impediria o usuário de fazer a única coisa que ele abriu o widget para fazer | ciclo 4 |
 | `CorruptedDataException` | Arquivo ilegível ou adulterado. Distingue *dado corrompido* de *falha de I/O*, que pedem respostas diferentes na UI | ciclo 2 |
-| `WaterTrackerWindow` | Janela Swing sem borda, always-on-top | ciclo 3 |
+| `WaterTrackerWindow` | Janela Swing sem borda, always-on-top. Ações destrutivas (`↺` corrigir) e de configuração (`⚙`) ficam **fora** da tela principal: botão de apagar ao lado dos de registrar trocaria um misclick por outro pior | ciclo 3 |
 
 ## 6. Design Patterns e convenções
 

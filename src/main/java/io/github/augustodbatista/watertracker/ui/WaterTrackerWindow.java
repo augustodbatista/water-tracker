@@ -16,6 +16,7 @@ import java.awt.Point;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.LocalDate;
+import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -23,10 +24,13 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
+import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 
@@ -84,6 +88,9 @@ final class WaterTrackerWindow extends JFrame {
 
     JPanel acoes = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
     acoes.setOpaque(false);
+    // Corrigir fica fora da tela principal de proposito: um botao de apagar ao lado dos de
+    // registrar so trocaria um misclick por outro, pior.
+    acoes.add(icone("↺", "Corrigir registros de hoje", this::abrirCorrecoes));
     acoes.add(icone("⚙", "Configurar meta diária", this::abrirConfiguracoes));
     acoes.add(icone("×", "Fechar", this::dispose));
 
@@ -202,6 +209,81 @@ final class WaterTrackerWindow extends JFrame {
     } catch (RuntimeException e) {
       avisar(e.getMessage());
     }
+  }
+
+  private void abrirCorrecoes() {
+    boolean primeiraVolta = true;
+    while (true) {
+      List<WaterEntry> doDia;
+      try {
+        doDia = new DailyIntake(LocalDate.now(), registros.loadAll()).entries();
+      } catch (RuntimeException e) {
+        avisar(e.getMessage());
+        return;
+      }
+      if (doDia.isEmpty()) {
+        // Só avisa se já abriu vazio. Reabrir para dizer "acabou" depois de remover o último
+        // registro seria um clique a mais para informar o óbvio.
+        if (primeiraVolta) {
+          avisar("Não há registros hoje para corrigir.");
+        }
+        return;
+      }
+      primeiraVolta = false;
+      if (!corrigirUmaVez(doDia)) {
+        return;
+      }
+    }
+  }
+
+  /**
+   * Mostra os registros do dia e aplica uma correção.
+   *
+   * @return {@code true} se o diálogo deve reabrir para outra correção
+   */
+  private boolean corrigirUmaVez(List<WaterEntry> doDia) {
+    JList<String> lista =
+        new JList<>(doDia.stream().map(r -> r.milliliters() + " ml").toArray(String[]::new));
+    lista.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+    // O ultimo e o candidato obvio: quem errou o clique acabou de errar.
+    lista.setSelectedIndex(doDia.size() - 1);
+
+    JScrollPane rolagem = new JScrollPane(lista);
+    rolagem.setPreferredSize(new Dimension(210, 108));
+
+    Object[] opcoes = {"Remover selecionado", "Zerar o dia", "Fechar"};
+    int escolha =
+        JOptionPane.showOptionDialog(
+            this,
+            rolagem,
+            "Corrigir registros de hoje",
+            JOptionPane.DEFAULT_OPTION,
+            JOptionPane.PLAIN_MESSAGE,
+            null,
+            opcoes,
+            opcoes[2]);
+
+    if (escolha == 0 && lista.getSelectedIndex() >= 0) {
+      registros.remove(doDia.get(lista.getSelectedIndex()));
+      atualizar();
+      return true;
+    }
+    if (escolha == 1 && confirmarZerar(doDia.size())) {
+      registros.clearDay(LocalDate.now());
+      atualizar();
+    }
+    return false;
+  }
+
+  private boolean confirmarZerar(int quantidade) {
+    int resposta =
+        JOptionPane.showConfirmDialog(
+            this,
+            "Apagar os " + quantidade + " registros de hoje? Isso não tem desfazer.",
+            "Zerar o dia",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+    return resposta == JOptionPane.YES_OPTION;
   }
 
   private void registrar(int mililitros) {

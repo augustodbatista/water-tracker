@@ -96,6 +96,65 @@ class JsonIntakeRepositoryTest {
     assertThrows(CorruptedDataException.class, () -> new JsonIntakeRepository(diretorio).loadAll());
   }
 
+  /** Desfazer um misclick tira <em>um</em> registro, não todos os iguais a ele. */
+  @Test
+  void deveRemoverApenasUmaOcorrenciaQuandoHaRegistrosIguais() {
+    JsonIntakeRepository repositorio = new JsonIntakeRepository(diretorio);
+    repositorio.save(new WaterEntry(HOJE, 250));
+    repositorio.save(new WaterEntry(HOJE, 250));
+
+    repositorio.remove(new WaterEntry(HOJE, 250));
+
+    assertEquals(List.of(new WaterEntry(HOJE, 250)), repositorio.loadAll());
+  }
+
+  @Test
+  void deveManterOsDemaisRegistrosAoRemoverUm() {
+    JsonIntakeRepository repositorio = new JsonIntakeRepository(diretorio);
+    repositorio.save(new WaterEntry(HOJE, 250));
+    repositorio.save(new WaterEntry(HOJE, 500));
+
+    repositorio.remove(new WaterEntry(HOJE, 250));
+
+    assertEquals(List.of(new WaterEntry(HOJE, 500)), repositorio.loadAll());
+  }
+
+  @Test
+  void naoDeveAlterarNadaAoRemoverRegistroInexistente() {
+    JsonIntakeRepository repositorio = new JsonIntakeRepository(diretorio);
+    repositorio.save(new WaterEntry(HOJE, 250));
+
+    repositorio.remove(new WaterEntry(HOJE, 999));
+
+    assertEquals(List.of(new WaterEntry(HOJE, 250)), repositorio.loadAll());
+  }
+
+  @Test
+  void deveZerarSomenteODiaInformado() {
+    JsonIntakeRepository repositorio = new JsonIntakeRepository(diretorio);
+    repositorio.save(new WaterEntry(HOJE, 250));
+    repositorio.save(new WaterEntry(HOJE, 500));
+    repositorio.save(new WaterEntry(HOJE.minusDays(1), 700));
+
+    repositorio.clearDay(HOJE);
+
+    assertEquals(List.of(new WaterEntry(HOJE.minusDays(1), 700)), repositorio.loadAll());
+  }
+
+  @Test
+  void deveRejeitarRegistroNuloAoRemover() {
+    JsonIntakeRepository repositorio = new JsonIntakeRepository(diretorio);
+
+    assertThrows(NullPointerException.class, () -> repositorio.remove(null));
+  }
+
+  @Test
+  void deveRejeitarDiaNuloAoZerar() {
+    JsonIntakeRepository repositorio = new JsonIntakeRepository(diretorio);
+
+    assertThrows(NullPointerException.class, () -> repositorio.clearDay(null));
+  }
+
   @Test
   void deveRejeitarDiretorioNulo() {
     assertThrows(NullPointerException.class, () -> new JsonIntakeRepository(null));
