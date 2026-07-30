@@ -42,6 +42,9 @@ final class WaterTrackerWindow extends JFrame {
   private static final int[] PORCOES_ML = {200, 250, 500};
   private static final int PASSO_DA_META_ML = 100;
 
+  /** Largura do conteúdo, em pixels. Dita a proporção retrato da janela. */
+  private static final int LARGURA_UTIL = 118;
+
   private static final Color FUNDO = new Color(0x1B, 0x26, 0x32);
   private static final Color TEXTO = new Color(0xE8, 0xF1, 0xF8);
   private static final Color TEXTO_FRACO = new Color(0x8C, 0xA3, 0xB8);
@@ -52,6 +55,7 @@ final class WaterTrackerWindow extends JFrame {
   private final transient DailyGoalStore metas;
 
   private final JLabel total = new JLabel("", SwingConstants.CENTER);
+  private final JLabel metaEscrita = new JLabel("", SwingConstants.CENTER);
   private final JProgressBar progresso = new JProgressBar();
 
   WaterTrackerWindow(JsonIntakeRepository registros, DailyGoalStore metas) {
@@ -131,31 +135,41 @@ final class WaterTrackerWindow extends JFrame {
     coluna.setOpaque(false);
 
     total.setForeground(TEXTO);
-    total.setFont(total.getFont().deriveFont(Font.BOLD, 22f));
+    total.setFont(total.getFont().deriveFont(Font.BOLD, 20f));
     total.setAlignmentX(CENTER_ALIGNMENT);
+
+    // Em retrato a janela e estreita: "4050 / 3500 ml" numa linha so ficaria mais largo que o
+    // widget inteiro. Separado, o numero que importa fica grande e a meta vira legenda.
+    metaEscrita.setForeground(TEXTO_FRACO);
+    metaEscrita.setFont(metaEscrita.getFont().deriveFont(Font.PLAIN, 11f));
+    metaEscrita.setAlignmentX(CENTER_ALIGNMENT);
 
     progresso.setForeground(AGUA);
     progresso.setBackground(TRILHO);
     progresso.setBorderPainted(false);
     // Hurdle #18: largura real, nao zero, senao o pack() encolhe a coluna inteira.
-    progresso.setPreferredSize(new Dimension(230, 8));
+    progresso.setPreferredSize(new Dimension(LARGURA_UTIL, 8));
     progresso.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
     progresso.setAlignmentX(CENTER_ALIGNMENT);
 
     coluna.add(total);
+    coluna.add(Box.createVerticalStrut(2));
+    coluna.add(metaEscrita);
     coluna.add(Box.createVerticalStrut(10));
     coluna.add(progresso);
     return coluna;
   }
 
+  /** Botões empilhados: é o que dá à janela a proporção retrato, e alvos maiores para o clique. */
   private JPanel botoes() {
-    JPanel linha = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
-    linha.setOpaque(false);
+    JPanel coluna = new JPanel(new GridLayout(0, 1, 0, 6));
+    coluna.setOpaque(false);
     for (int porcao : PORCOES_ML) {
-      linha.add(botao("+" + porcao, "Registrar " + porcao + " ml", () -> registrar(porcao)));
+      coluna.add(
+          botao("+" + porcao + " ml", "Registrar " + porcao + " ml", () -> registrar(porcao)));
     }
-    linha.add(botao("⋯", "Digitar outra quantidade", this::perguntarQuantidade));
-    return linha;
+    coluna.add(botao("⋯", "Digitar outra quantidade", this::perguntarQuantidade));
+    return coluna;
   }
 
   private JButton botao(String texto, String dica, Runnable acao) {
@@ -296,17 +310,19 @@ final class WaterTrackerWindow extends JFrame {
   }
 
   private void atualizar() {
-    int meta = metas.load();
     long consumido;
     try {
       consumido = new DailyIntake(LocalDate.now(), registros.loadAll()).totalMilliliters();
     } catch (RuntimeException e) {
-      total.setText("erro ao ler");
+      total.setText("erro");
       total.setToolTipText(e.getMessage());
+      metaEscrita.setText("ao ler o arquivo");
       return;
     }
-    total.setText(consumido + " / " + meta + " ml");
+    int meta = metas.load();
+    total.setText(consumido + " ml");
     total.setToolTipText(null);
+    metaEscrita.setText("de " + meta + " ml");
     progresso.setMaximum(meta);
     progresso.setValue((int) Math.min(consumido, meta));
   }
