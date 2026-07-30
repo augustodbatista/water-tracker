@@ -24,6 +24,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.time.LocalDate;
 import java.util.List;
@@ -38,7 +39,6 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.ListSelectionModel;
@@ -53,34 +53,28 @@ final class WaterTrackerWindow extends JFrame {
 
   private static final int[] PORCOES_ML = {200, 250, 500};
   private static final int PASSO_DA_META_ML = 100;
+  private static final int INTERVALO_DA_VIRADA_MS = 60_000;
 
-  /** Largura do conteúdo, em pixels. Dita a proporção retrato da janela. */
-  private static final int LARGURA_UTIL = 118;
+  private static final int LARGURA_UTIL = 132;
+  private static final int GOTA_LARGURA = 58;
+  private static final int GOTA_ALTURA = 90;
+  private static final int RAIO_DA_JANELA = 18;
 
-  private static final Color FUNDO = new Color(0x1B, 0x26, 0x32);
-  private static final Color TEXTO = new Color(0xE8, 0xF1, 0xF8);
-  private static final Color TEXTO_FRACO = new Color(0x8C, 0xA3, 0xB8);
-  /** Azul royal (#4169E1) clareado. Usada nos botões, na barra de progresso e na gota. */
+  private static final Color FUNDO = new Color(0x0E, 0x14, 0x19);
+  private static final Color RECIPIENTE = new Color(0x1A, 0x24, 0x2D);
   private static final Color AGUA = new Color(0x4A, 0x7B, 0xE8);
-  private static final Color TRILHO = new Color(0x2A, 0x3A, 0x4A);
+  private static final Color BRILHO = new Color(0x8F, 0xB4, 0xF5);
+  private static final Color TEXTO = new Color(0xED, 0xF2, 0xF7);
+  private static final Color TEXTO_FRACO = new Color(0x78, 0x89, 0x9B);
 
   private final transient JsonIntakeRepository registros;
   private final transient DailyGoalStore metas;
 
-  /** De quanto em quanto tempo se verifica se o dia virou. */
-  private static final int INTERVALO_DA_VIRADA_MS = 60_000;
-
   private LocalDate diaExibido = LocalDate.now();
 
-  /** Tamanho da gota-medidor, em pixels. Alta o bastante para o nível ser legível. */
-  private static final int GOTA_LARGURA = 30;
-
-  private static final int GOTA_ALTURA = 48;
-
+  private final JLabel medidor = new JLabel();
   private final JLabel total = new JLabel("", SwingConstants.CENTER);
   private final JLabel metaEscrita = new JLabel("", SwingConstants.CENTER);
-  private final JLabel medidor = new JLabel();
-  private final JProgressBar progresso = new JProgressBar();
 
   WaterTrackerWindow(JsonIntakeRepository registros, DailyGoalStore metas) {
     this.registros = registros;
@@ -96,33 +90,33 @@ final class WaterTrackerWindow extends JFrame {
     // as 8h da manha ele ainda mostraria o total de ontem ate o usuario clicar em alguma coisa.
     new Timer(INTERVALO_DA_VIRADA_MS, evento -> verificarViradaDoDia()).start();
 
-    JPanel raiz = new JPanel(new BorderLayout(0, 10));
+    JPanel raiz = new JPanel(new BorderLayout(0, 0));
     raiz.setBackground(FUNDO);
-    raiz.setBorder(BorderFactory.createEmptyBorder(12, 16, 14, 16));
+    raiz.setBorder(BorderFactory.createEmptyBorder(10, 14, 16, 14));
     raiz.add(cabecalho(), BorderLayout.NORTH);
-    raiz.add(centro(), BorderLayout.CENTER);
-    raiz.add(botoes(), BorderLayout.SOUTH);
+    raiz.add(leitura(), BorderLayout.CENTER);
+    raiz.add(controles(), BorderLayout.SOUTH);
 
     permitirArrastar(raiz);
     setContentPane(raiz);
     atualizar();
     // Hurdle #18: pack() por ultimo e sem mexer no tamanho depois.
     pack();
+    arredondarCantos();
     posicionarNoCantoInferiorDireito();
   }
 
   private JPanel cabecalho() {
-    JPanel linha = new JPanel(new BorderLayout());
-    linha.setOpaque(false);
-
-    JPanel acoes = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+    JPanel acoes = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
     acoes.setOpaque(false);
-    // Corrigir fica fora da tela principal de proposito: um botao de apagar ao lado dos de
+    // Corrigir e configurar ficam fora da tela principal: um botao de apagar ao lado dos de
     // registrar so trocaria um misclick por outro, pior.
     acoes.add(icone("↺", "Corrigir registros de hoje", this::abrirCorrecoes));
     acoes.add(icone("⚙", "Configurar meta diária", this::abrirConfiguracoes));
     acoes.add(icone("×", "Fechar", this::dispose));
 
+    JPanel linha = new JPanel(new BorderLayout());
+    linha.setOpaque(false);
     linha.add(acoes, BorderLayout.EAST);
     return linha;
   }
@@ -130,7 +124,7 @@ final class WaterTrackerWindow extends JFrame {
   private JLabel icone(String simbolo, String dica, Runnable acao) {
     JLabel rotulo = new JLabel(simbolo);
     rotulo.setForeground(TEXTO_FRACO);
-    rotulo.setFont(rotulo.getFont().deriveFont(Font.PLAIN, 15f));
+    rotulo.setFont(rotulo.getFont().deriveFont(Font.PLAIN, 14f));
     rotulo.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     rotulo.setToolTipText(dica);
     rotulo.addMouseListener(
@@ -153,71 +147,110 @@ final class WaterTrackerWindow extends JFrame {
     return rotulo;
   }
 
-  private JPanel centro() {
+  /** A gota é o instrumento: o nível dela é a informação principal, não um enfeite ao lado dela. */
+  private JPanel leitura() {
     JPanel coluna = new JPanel();
     coluna.setLayout(new BoxLayout(coluna, BoxLayout.Y_AXIS));
     coluna.setOpaque(false);
 
+    medidor.setAlignmentX(CENTER_ALIGNMENT);
+
+    // Numero sem unidade: "ml" ja aparece na linha da meta, logo abaixo.
     total.setForeground(TEXTO);
-    total.setFont(total.getFont().deriveFont(Font.BOLD, 20f));
+    total.setFont(total.getFont().deriveFont(Font.BOLD, 27f));
     total.setAlignmentX(CENTER_ALIGNMENT);
 
-    // Em retrato a janela e estreita: "4050 / 3500 ml" numa linha so ficaria mais largo que o
-    // widget inteiro. Separado, o numero que importa fica grande e a meta vira legenda.
     metaEscrita.setForeground(TEXTO_FRACO);
     metaEscrita.setFont(metaEscrita.getFont().deriveFont(Font.PLAIN, 11f));
     metaEscrita.setAlignmentX(CENTER_ALIGNMENT);
 
-    progresso.setForeground(AGUA);
-    progresso.setBackground(TRILHO);
-    progresso.setBorderPainted(false);
-    // Hurdle #18: largura real, nao zero, senao o pack() encolhe a coluna inteira.
-    progresso.setPreferredSize(new Dimension(LARGURA_UTIL, 8));
-    progresso.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
-    progresso.setAlignmentX(CENTER_ALIGNMENT);
-
-    JPanel textos = new JPanel();
-    textos.setLayout(new BoxLayout(textos, BoxLayout.Y_AXIS));
-    textos.setOpaque(false);
-    textos.add(total);
-    textos.add(Box.createVerticalStrut(2));
-    textos.add(metaEscrita);
-
-    // FlowLayout centraliza os filhos verticalmente na linha, o que alinha a gota com o bloco de
-    // texto sem depender de altura fixa - fonte maior no Pop!_OS continua alinhada.
-    JPanel linha = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
-    linha.setOpaque(false);
-    linha.add(medidor);
-    linha.add(textos);
-    linha.setAlignmentX(CENTER_ALIGNMENT);
-
-    coluna.add(linha);
+    coluna.add(Box.createVerticalStrut(4));
+    coluna.add(medidor);
     coluna.add(Box.createVerticalStrut(12));
-    coluna.add(progresso);
+    coluna.add(total);
+    coluna.add(Box.createVerticalStrut(1));
+    coluna.add(metaEscrita);
+    coluna.add(Box.createVerticalStrut(16));
     return coluna;
   }
 
-  /** Botões empilhados: é o que dá à janela a proporção retrato, e alvos maiores para o clique. */
-  private JPanel botoes() {
-    JPanel coluna = new JPanel(new GridLayout(0, 1, 0, 6));
+  private JPanel controles() {
+    JPanel coluna = new JPanel();
+    coluna.setLayout(new BoxLayout(coluna, BoxLayout.Y_AXIS));
     coluna.setOpaque(false);
+    coluna.add(porcoes());
+    coluna.add(Box.createVerticalStrut(8));
+    coluna.add(outroValor());
+    return coluna;
+  }
+
+  /** Bolhas soltas, com vão entre elas — é o vão que faz cada uma ler como uma bolha. */
+  private JPanel porcoes() {
+    JPanel bloco = new JPanel(new GridLayout(0, 1, 0, 7));
+    bloco.setOpaque(false);
     for (int porcao : PORCOES_ML) {
-      coluna.add(
+      bloco.add(
           botao("+" + porcao + " ml", "Registrar " + porcao + " ml", () -> registrar(porcao)));
     }
-    coluna.add(botao("⋯", "Digitar outra quantidade", this::perguntarQuantidade));
-    return coluna;
+    return bloco;
   }
 
-  private JButton botao(String texto, String dica, Runnable acao) {
-    JButton botao = new JButton(texto);
-    botao.setFocusPainted(false);
+  private BotaoBolha botao(String texto, String dica, Runnable acao) {
+    BotaoBolha botao = new BotaoBolha(texto, true);
     botao.setBackground(AGUA);
     botao.setForeground(Color.WHITE);
-    botao.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
+    botao.setFont(botao.getFont().deriveFont(Font.BOLD, 12f));
+    botao.setBorder(BorderFactory.createEmptyBorder(9, 10, 9, 10));
     botao.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     botao.setToolTipText(dica);
+    botao.setPreferredSize(new Dimension(LARGURA_UTIL, 34));
     botao.addActionListener(evento -> acao.run());
+    botao.addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mouseEntered(MouseEvent evento) {
+            botao.setBackground(BRILHO);
+          }
+
+          @Override
+          public void mouseExited(MouseEvent evento) {
+            botao.setBackground(AGUA);
+          }
+        });
+    return botao;
+  }
+
+  /**
+   * Abre um diálogo em vez de registrar na hora, então não pode parecer um botão de porção.
+   *
+   * <p>Mesma forma de bolha, mas vazia: a diferença de tratamento carrega a diferença de ação.
+   */
+  private BotaoBolha outroValor() {
+    BotaoBolha botao = new BotaoBolha("Outro valor", false);
+    botao.setBackground(RECIPIENTE);
+    botao.setForeground(TEXTO_FRACO);
+    botao.setFont(botao.getFont().deriveFont(Font.PLAIN, 11f));
+    botao.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
+    botao.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+    botao.setToolTipText("Digitar uma quantidade qualquer");
+    botao.setAlignmentX(CENTER_ALIGNMENT);
+    botao.setPreferredSize(new Dimension(LARGURA_UTIL, 30));
+    botao.setMaximumSize(new Dimension(LARGURA_UTIL, 30));
+    botao.addActionListener(evento -> perguntarQuantidade());
+    botao.addMouseListener(
+        new MouseAdapter() {
+          @Override
+          public void mouseEntered(MouseEvent evento) {
+            botao.setForeground(TEXTO);
+            botao.setBackground(AGUA);
+          }
+
+          @Override
+          public void mouseExited(MouseEvent evento) {
+            botao.setForeground(TEXTO_FRACO);
+            botao.setBackground(RECIPIENTE);
+          }
+        });
     return botao;
   }
 
@@ -358,25 +391,34 @@ final class WaterTrackerWindow extends JFrame {
     try {
       consumido = new DailyIntake(LocalDate.now(), registros.loadAll()).totalMilliliters();
     } catch (RuntimeException e) {
-      total.setText("erro");
+      total.setText("—");
       total.setToolTipText(e.getMessage());
-      metaEscrita.setText("ao ler o arquivo");
+      metaEscrita.setText("erro ao ler o arquivo");
       return;
     }
     int meta = metas.load();
-    total.setText(consumido + " ml");
+    total.setText(String.valueOf(consumido));
     total.setToolTipText(null);
     metaEscrita.setText("de " + meta + " ml");
-    progresso.setMaximum(meta);
-    progresso.setValue((int) Math.min(consumido, meta));
 
     double fracao = Math.min(1.0, consumido / (double) meta);
-    medidor.setIcon(new GotaDagua(GOTA_LARGURA, GOTA_ALTURA, AGUA, TRILHO, fracao));
+    medidor.setIcon(new GotaDagua(GOTA_LARGURA, GOTA_ALTURA, AGUA, RECIPIENTE, fracao));
     medidor.setToolTipText(Math.round(fracao * 100) + "% da meta");
   }
 
   private void avisar(String mensagem) {
     JOptionPane.showMessageDialog(this, mensagem, "Water Tracker", JOptionPane.WARNING_MESSAGE);
+  }
+
+  /** Cantos arredondados. Nem todo servidor gráfico suporta recorte de janela. */
+  private void arredondarCantos() {
+    try {
+      setShape(
+          new RoundRectangle2D.Double(
+              0, 0, getWidth(), getHeight(), RAIO_DA_JANELA, RAIO_DA_JANELA));
+    } catch (UnsupportedOperationException e) {
+      setShape(null);
+    }
   }
 
   /** Sem borda não há barra de título, então a janela inteira vira a alça de arraste. */
@@ -417,7 +459,46 @@ final class WaterTrackerWindow extends JFrame {
   }
 
   /**
-   * Gota d'água desenhada, no lugar do emoji {@code 💧}.
+   * Botão em forma de bolha.
+   *
+   * <p>O Swing não tem botão arredondado: o look-and-feel pinta um retângulo. Aqui o preenchimento
+   * padrão é desligado e a forma é pintada à mão, com raio igual à altura — o que dá extremidades
+   * semicirculares em vez de cantos só suavizados.
+   */
+  private static final class BotaoBolha extends JButton {
+
+    private static final long serialVersionUID = 1L;
+
+    private final boolean preenchida;
+
+    BotaoBolha(String texto, boolean preenchida) {
+      super(texto);
+      this.preenchida = preenchida;
+      setContentAreaFilled(false);
+      setBorderPainted(false);
+      setFocusPainted(false);
+      setOpaque(false);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      Graphics2D g2 = (Graphics2D) g.create();
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      int arco = getHeight();
+      g2.setColor(getBackground());
+      if (preenchida) {
+        g2.fillRoundRect(0, 0, getWidth(), getHeight(), arco, arco);
+      } else {
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arco, arco);
+      }
+      g2.dispose();
+      super.paintComponent(g);
+    }
+  }
+
+  /**
+   * Gota d'água desenhada, no lugar do emoji {@code 💧}, funcionando como medidor de nível.
    *
    * <p>Emoji do plano suplementar do Unicode não tem fallback confiável no Java2D: costuma
    * renderizar no Windows e virar quadrado vazio no Pop!_OS, dependendo das fontes instaladas.
@@ -459,13 +540,21 @@ final class WaterTrackerWindow extends JFrame {
       g2.fill(gota);
 
       if (preenchimento > 0) {
-        // Recorta pela silhueta e pinta so a faixa de baixo: a agua sobe dentro da gota, em vez
-        // de a gota inteira mudar de cor. Copia propria do Graphics para nao levar o clip adiante.
+        // Recorta pela silhueta e pinta so a faixa de baixo, numa copia propria do Graphics para
+        // o clip nao vazar para o resto da pintura.
         Graphics2D recorte = (Graphics2D) g2.create();
         int alturaCheia = (int) Math.round(altura * preenchimento);
+        int nivel = y + altura - alturaCheia;
         recorte.clip(gota);
         recorte.setColor(cheia);
-        recorte.fillRect(x, y + altura - alturaCheia, largura, alturaCheia);
+        recorte.fillRect(x, nivel, largura, alturaCheia);
+        if (preenchimento < 1) {
+          // Linha de superficie: e o que faz ler como liquido num recipiente, e nao como forma
+          // preenchida pela metade.
+          recorte.setColor(BRILHO);
+          recorte.setStroke(new BasicStroke(2f));
+          recorte.drawLine(x, nivel, x + largura, nivel);
+        }
         recorte.dispose();
       }
 
@@ -477,18 +566,27 @@ final class WaterTrackerWindow extends JFrame {
       g2.dispose();
     }
 
-    /** Círculo embaixo somado a um triângulo em cima — ver Hurdle #19. */
+    /**
+     * Círculo embaixo somado a um triângulo em cima — ver Hurdle #19.
+     *
+     * <p>Recuado 1px de cada lado: encostando na borda do ícone, o contorno sai cortado embaixo.
+     */
     private Area forma(int x, int y) {
-      double centro = x + largura / 2.0;
-      double baseDoTriangulo = y + altura - largura * 0.55;
+      double margem = 1;
+      double larg = largura - 2 * margem;
+      double alt = altura - 2 * margem;
+      double esquerda = x + margem;
+      double topo = y + margem;
+      double centro = esquerda + larg / 2.0;
+      double baseDoTriangulo = topo + alt - larg * 0.55;
 
       Path2D ponta = new Path2D.Double();
-      ponta.moveTo(centro, y);
-      ponta.lineTo(x + largura, baseDoTriangulo);
-      ponta.lineTo(x, baseDoTriangulo);
+      ponta.moveTo(centro, topo);
+      ponta.lineTo(esquerda + larg, baseDoTriangulo);
+      ponta.lineTo(esquerda, baseDoTriangulo);
       ponta.closePath();
 
-      Area gota = new Area(new Ellipse2D.Double(x, y + altura - largura, largura, largura));
+      Area gota = new Area(new Ellipse2D.Double(esquerda, topo + alt - larg, larg, larg));
       gota.add(new Area(ponta));
       return gota;
     }
