@@ -40,7 +40,8 @@ Princípios que governam decisões de produto:
 | `WATER_TRACKER_HOME` | *(opcional)* | Override do diretório de dados. **Validar contra path traversal antes de usar** (ciclo 2) |
 | Diretório de dados | `System.getProperty("user.home") + /.water-tracker/` | Funciona nos dois SOs |
 | Arquivo de registros | `entries.json`, UTF-8 | Escrita atômica (write-temp + `ATOMIC_MOVE`) |
-| Meta diária padrão | 2000 ml | Constante por ora; configurável em ciclo futuro |
+| Arquivo da meta | `daily-goal.txt` | Só o número, sem JSON: é um inteiro. Faixa aceita: 500 a 10000 ml |
+| Meta diária padrão | 2000 ml | Usada quando o arquivo não existe ou tem valor inutilizável |
 | Volume máximo por registro | 5000 ml | Barreira de sanidade contra erro de digitação |
 
 **Não há segredos, credenciais, rede ou servidor neste projeto.** Se isso mudar, esta seção muda
@@ -114,6 +115,7 @@ e questione.
 | `DailyIntake` | Agrega entradas de um dia: total e progresso vs. meta | ciclo 1 |
 | `JsonIntakeRepository` | Classe **concreta**, sem interface. O `@TempDir` do JUnit testa contra arquivo de verdade, então `InMemoryIntakeRepository` não teria usuário — seria abstração especulativa, contra a convenção 7. A interface nasce se e quando houver segunda implementação real | ciclo 2 |
 | `RegistroEmDisco` | *record* privado dentro de `JsonIntakeRepository`. Separa o contrato do arquivo do modelo de domínio — ver Hurdle #17 | ciclo 2 |
+| `DailyGoalStore` | Meta diária em `daily-goal.txt`. Ao contrário dos registros, arquivo ilegível aqui **não** lança exceção: cai no padrão. Travar o app por causa da meta impediria o usuário de fazer a única coisa que ele abriu o widget para fazer | ciclo 4 |
 | `CorruptedDataException` | Arquivo ilegível ou adulterado. Distingue *dado corrompido* de *falha de I/O*, que pedem respostas diferentes na UI | ciclo 2 |
 | `WaterTrackerWindow` | Janela Swing sem borda, always-on-top | ciclo 3 |
 
