@@ -69,6 +69,12 @@ Comando único que a CI e você rodam — se ele passa, o commit é entregável:
 mvn clean verify
 ```
 
+Para abrir o widget (o `shade` gera um jar único, com o Gson embutido):
+
+```bash
+java -jar target/water-tracker-1.0.0-SNAPSHOT.jar
+```
+
 Antes de confiar no resultado, confira no log **as quatro linhas** que provam que os gates rodaram
 de fato, e não por vacuidade (Hurdle #10):
 
@@ -141,6 +147,7 @@ e questione.
 | 10 | **Projeto vazio deixa os gates verdes por vacuidade**: JaCoCo e SpotBugs logam `Skipping ... due to missing execution data` e o build passa. Um pipeline "verde" pode significar "não rodou nada". | Cada gate foi verificado mordendo de verdade: Checkstyle reprovou 2 violações reais; o compilador reprovou o RED; JaCoCo reprovou com `lines covered ratio is 0.42, but expected minimum is 0.85`. Repetir essa prova sempre que um gate for adicionado ou reconfigurado. |
 | 11 | `AbbreviationAsWordInName` do google_checks (máx. 1 maiúscula consecutiva) reprova nossa convenção de nome de teste em português: a conjunção "E" seguida de palavra capitalizada (`...DataEVolume...`) dispara em todo teste que descreve duas coisas. | `config/checkstyle/suppressions.xml` suprime **só essa regra**, **só em `src/test/`**. Produção continua sob a regra completa, onde ela protege de verdade (`HTTPResponseXMLParser`). Ligado via `suppressionsFileExpression` = `org.checkstyle.google.suppressionfilter.config` — google_checks lê dessa propriedade, não da padrão do plugin. |
 | 14 | **`setx PATH "$env:PATH;..."` pode destruir o PATH.** Dois defeitos somados: dentro do PowerShell, `$env:PATH` é a concatenação do PATH *de sistema* com o *de usuário*, então gravá-lo no PATH do usuário duplica todas as entradas do sistema; e `setx` **trunca silenciosamente em 1024 caracteres**. O PATH de usuário desta máquina já tinha 1016 caracteres — faltavam 8 para a perda de dados. | Usar `[Environment]::SetEnvironmentVariable(...,'User')`, que não tem limite de tamanho, lendo o PATH de usuário com `GetEnvironmentVariable('Path','User')` e anexando apenas o que falta. Comando pronto na seção 3. |
+| 18 | Mexer no tamanho da janela **depois** do `pack()` (`setMinimumSize`) deixa o layout desatualizado: o texto do total passou por cima dos botões e a barra de progresso sumiu. Somado a isso, `setPreferredSize` com largura **0** na barra encolhe a coluna inteira. | `pack()` por último e não redimensionar depois. Dar largura real à barra. Lição geral: **rodar o app e olhar** — os 26 testes passavam com a janela quebrada, porque `ui/` não é testada. |
 | 17 | **O Gson chama o construtor canônico do *record*, mas embrulha a exceção dele numa `java.lang.RuntimeException` crua.** Um `entries.json` editado à mão com `"milliliters": 0` dispara a `InvalidVolumeException` corretamente — e ela chega ao chamador irreconhecível, impossível de distinguir de um bug nosso. Capturar `RuntimeException` e inspecionar a causa dependeria de detalhe interno do Gson. | Desserializar para um **DTO de disco** (`RegistroEmDisco`, com `String`/`Integer` frouxos aceitando nulo) e converter para o domínio em código nosso, onde a validação lança exceção reconhecível. Bônus: dispensa o `TypeAdapter` de `LocalDate` (o DTO já guarda texto ISO) e desacopla o formato do arquivo da forma do *record* — renomear um componente deixa de quebrar arquivos existentes em silêncio. |
 | 16 | Dependabot abriu 7 PRs no primeiro push e **os do `pom.xml` conflitaram entre si**: os bumps mexem em linhas vizinhas do bloco `<properties>`, então mergear um invalida o merge do outro. Também revelou que a API `search.maven.org` devolve `latestVersion` desatualizado — ela reportou Checkstyle 10.26.1 quando o atual era 13.9.0, três majors à frente. | Mergear primeiro os que não colidem e resolver o resto localmente, num commit por dependência, cada um verificado com `mvn clean verify`. Para descobrir versão atual, **não** confiar na `search.maven.org`: usar o `maven-metadata.xml` do repositório ou deixar o Dependabot dizer. |
 | 15 | Mesmo com `JAVA_HOME` apontando para o JDK 21, `java` digitado no terminal resolve para o **Zulu 25**, porque `C:\Program Files\Zulu\zulu-25\bin\` vem antes no PATH. | Inofensivo para o build: o `mvn` usa `JAVA_HOME` e foi verificado rodando em `Java version: 21.0.11, Eclipse Adoptium`. Mas ao executar o jar à mão, chamar o `java` do JDK 21 pelo caminho completo — senão o app roda sob um runtime diferente do que a CI validou. |
@@ -190,10 +197,11 @@ Registrado explicitamente para que a regra "segurança é hábito" não vire cer
 - Parse de JSON malformado ou adulterado à mão pelo usuário — *feito, ciclo 2*. Arquivo em disco é
   **entrada não confiável**: passa por DTO e revalida no domínio (Hurdle #17)
 - Truncamento do arquivo por queda no meio da gravação — *feito, ciclo 2*: temp + `ATOMIC_MOVE`
-- **Perda de registro** por escrita concorrente de duas instâncias — *pendente*. Atenção à
-  distinção: a troca atômica garante que o arquivo nunca fica corrompido, mas `save()` faz
-  ler-alterar-gravar, então dois widgets abertos podem sobrescrever o registro um do outro. É
-  perda de dado, não corrupção
+- **Perda de registro** por escrita concorrente de duas instâncias — *deliberadamente não tratado*.
+  A troca atômica garante que o arquivo nunca corrompe; o que sobra é `save()` fazer
+  ler-alterar-gravar, então dois widgets abertos podem sobrescrever o registro um do outro. Custa
+  um `FileLock` para resolver, mas o app é de uso pessoal e ninguém abre dois. Tratar quando (e se)
+  acontecer
 
 **Não se aplica** (app local, single-user, sem rede e sem servidor): SSRF, rate limiting,
 autenticação, autorização, CSRF, injeção de SQL, gestão de segredos.

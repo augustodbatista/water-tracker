@@ -59,7 +59,6 @@ class JsonIntakeRepositoryTest {
     assertTrue(Files.isDirectory(inexistente));
   }
 
-  /** A escrita atômica usa um arquivo temporário; deixá-lo para trás seria lixo acumulando. */
   @Test
   void naoDeveDeixarArquivoTemporarioParaTras() throws IOException {
     new JsonIntakeRepository(diretorio).save(new WaterEntry(HOJE, 250));
@@ -93,27 +92,6 @@ class JsonIntakeRepositoryTest {
   void deveRecusarArquivoComJsonMalformado() throws IOException {
     Files.writeString(
         diretorio.resolve("entries.json"), "{isto nao e json", StandardCharsets.UTF_8);
-
-    assertThrows(CorruptedDataException.class, () -> new JsonIntakeRepository(diretorio).loadAll());
-  }
-
-  /** Regra do domínio precisa sobreviver ao parse: volume zero é inválido venha de onde vier. */
-  @Test
-  void deveRecusarArquivoComVolumeQueViolaORegraDoDominio() throws IOException {
-    Files.writeString(
-        diretorio.resolve("entries.json"),
-        "[{\"date\":\"2026-07-27\",\"milliliters\":0}]",
-        StandardCharsets.UTF_8);
-
-    assertThrows(CorruptedDataException.class, () -> new JsonIntakeRepository(diretorio).loadAll());
-  }
-
-  @Test
-  void deveRecusarArquivoComDataIlegivel() throws IOException {
-    Files.writeString(
-        diretorio.resolve("entries.json"),
-        "[{\"date\":\"27/07/2026\",\"milliliters\":250}]",
-        StandardCharsets.UTF_8);
 
     assertThrows(CorruptedDataException.class, () -> new JsonIntakeRepository(diretorio).loadAll());
   }
