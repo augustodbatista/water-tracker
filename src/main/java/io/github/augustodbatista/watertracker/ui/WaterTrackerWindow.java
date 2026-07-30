@@ -4,6 +4,7 @@ import io.github.augustodbatista.watertracker.domain.DailyIntake;
 import io.github.augustodbatista.watertracker.domain.WaterEntry;
 import io.github.augustodbatista.watertracker.storage.DailyGoalStore;
 import io.github.augustodbatista.watertracker.storage.JsonIntakeRepository;
+import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -71,8 +72,14 @@ final class WaterTrackerWindow extends JFrame {
 
   private LocalDate diaExibido = LocalDate.now();
 
+  /** Tamanho da gota-medidor, em pixels. Alta o bastante para o nível ser legível. */
+  private static final int GOTA_LARGURA = 30;
+
+  private static final int GOTA_ALTURA = 48;
+
   private final JLabel total = new JLabel("", SwingConstants.CENTER);
   private final JLabel metaEscrita = new JLabel("", SwingConstants.CENTER);
+  private final JLabel medidor = new JLabel();
   private final JProgressBar progresso = new JProgressBar();
 
   WaterTrackerWindow(JsonIntakeRepository registros, DailyGoalStore metas) {
@@ -154,8 +161,6 @@ final class WaterTrackerWindow extends JFrame {
     total.setForeground(TEXTO);
     total.setFont(total.getFont().deriveFont(Font.BOLD, 20f));
     total.setAlignmentX(CENTER_ALIGNMENT);
-    total.setIcon(new GotaDagua(13, 17, AGUA));
-    total.setIconTextGap(7);
 
     // Em retrato a janela e estreita: "4050 / 3500 ml" numa linha so ficaria mais largo que o
     // widget inteiro. Separado, o numero que importa fica grande e a meta vira legenda.
@@ -171,10 +176,23 @@ final class WaterTrackerWindow extends JFrame {
     progresso.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
     progresso.setAlignmentX(CENTER_ALIGNMENT);
 
-    coluna.add(total);
-    coluna.add(Box.createVerticalStrut(2));
-    coluna.add(metaEscrita);
-    coluna.add(Box.createVerticalStrut(10));
+    JPanel textos = new JPanel();
+    textos.setLayout(new BoxLayout(textos, BoxLayout.Y_AXIS));
+    textos.setOpaque(false);
+    textos.add(total);
+    textos.add(Box.createVerticalStrut(2));
+    textos.add(metaEscrita);
+
+    // FlowLayout centraliza os filhos verticalmente na linha, o que alinha a gota com o bloco de
+    // texto sem depender de altura fixa - fonte maior no Pop!_OS continua alinhada.
+    JPanel linha = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
+    linha.setOpaque(false);
+    linha.add(medidor);
+    linha.add(textos);
+    linha.setAlignmentX(CENTER_ALIGNMENT);
+
+    coluna.add(linha);
+    coluna.add(Box.createVerticalStrut(12));
     coluna.add(progresso);
     return coluna;
   }
@@ -351,6 +369,10 @@ final class WaterTrackerWindow extends JFrame {
     metaEscrita.setText("de " + meta + " ml");
     progresso.setMaximum(meta);
     progresso.setValue((int) Math.min(consumido, meta));
+
+    double fracao = Math.min(1.0, consumido / (double) meta);
+    medidor.setIcon(new GotaDagua(GOTA_LARGURA, GOTA_ALTURA, AGUA, TRILHO, fracao));
+    medidor.setToolTipText(Math.round(fracao * 100) + "% da meta");
   }
 
   private void avisar(String mensagem) {
@@ -405,12 +427,26 @@ final class WaterTrackerWindow extends JFrame {
 
     private final int largura;
     private final int altura;
-    private final Color cor;
+    private final Color cheia;
+    private final Color vazia;
+    private final double preenchimento;
 
+    /** Gota inteiramente preenchida, para o ícone da janela. */
     GotaDagua(int largura, int altura, Color cor) {
+      this(largura, altura, cor, cor, 1.0);
+    }
+
+    /**
+     * Gota que funciona como medidor.
+     *
+     * @param preenchimento fração cheia, de 0 a 1, medida de baixo para cima
+     */
+    GotaDagua(int largura, int altura, Color cheia, Color vazia, double preenchimento) {
       this.largura = largura;
       this.altura = altura;
-      this.cor = cor;
+      this.cheia = cheia;
+      this.vazia = vazia;
+      this.preenchimento = preenchimento;
     }
 
     @Override
@@ -418,8 +454,31 @@ final class WaterTrackerWindow extends JFrame {
       Graphics2D g2 = (Graphics2D) g.create();
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-      // Circulo embaixo somado a um triangulo em cima. Uma curva simetrica dos dois lados daria
-      // uma folha, pontuda em cima e embaixo - gota e redonda na base.
+      Area gota = forma(x, y);
+      g2.setColor(vazia);
+      g2.fill(gota);
+
+      if (preenchimento > 0) {
+        // Recorta pela silhueta e pinta so a faixa de baixo: a agua sobe dentro da gota, em vez
+        // de a gota inteira mudar de cor. Copia propria do Graphics para nao levar o clip adiante.
+        Graphics2D recorte = (Graphics2D) g2.create();
+        int alturaCheia = (int) Math.round(altura * preenchimento);
+        recorte.clip(gota);
+        recorte.setColor(cheia);
+        recorte.fillRect(x, y + altura - alturaCheia, largura, alturaCheia);
+        recorte.dispose();
+      }
+
+      // Sem contorno, com o dia zerado a gota inteira ficaria na cor vazia, quase indistinguivel
+      // do fundo. O contorno mantem a silhueta legivel em qualquer nivel.
+      g2.setColor(new Color(cheia.getRed(), cheia.getGreen(), cheia.getBlue(), 130));
+      g2.setStroke(new BasicStroke(1.4f));
+      g2.draw(gota);
+      g2.dispose();
+    }
+
+    /** Círculo embaixo somado a um triângulo em cima — ver Hurdle #19. */
+    private Area forma(int x, int y) {
       double centro = x + largura / 2.0;
       double baseDoTriangulo = y + altura - largura * 0.55;
 
@@ -431,10 +490,7 @@ final class WaterTrackerWindow extends JFrame {
 
       Area gota = new Area(new Ellipse2D.Double(x, y + altura - largura, largura, largura));
       gota.add(new Area(ponta));
-
-      g2.setColor(cor);
-      g2.fill(gota);
-      g2.dispose();
+      return gota;
     }
 
     @Override
