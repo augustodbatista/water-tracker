@@ -22,3 +22,7 @@ o commit é entregável.
 
 Convenções, decisões de arquitetura e armadilhas conhecidas estão em [CLAUDE.md](CLAUDE.md).
 Leia antes de contribuir.
+
+## Licença
+
+[MIT](LICENSE) — use, copie e modifique à vontade.
