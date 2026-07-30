@@ -20,26 +20,15 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Guarda os registros de consumo num único arquivo JSON no disco local.
+ * Guarda os registros num único arquivo JSON local, em formato legível a olho nu.
  *
- * <p>O formato é deliberadamente legível: datas em ISO-8601 e identação preservada. O arquivo é do
- * usuário, mora na pasta pessoal dele, e ele tem todo o direito de abrir e conferir sem precisar de
- * ferramenta especial.
+ * <p>A gravação é atômica: escreve num temporário e renomeia por cima com
+ * {@link StandardCopyOption#ATOMIC_MOVE}. Sem isso, uma queda no meio da escrita deixaria um JSON
+ * truncado e levaria junto todo o histórico.
  *
- * <p>A gravação é atômica — escreve num arquivo temporário e o renomeia por cima do original com
- * {@link StandardCopyOption#ATOMIC_MOVE}. Sem isso, uma queda de energia no meio da escrita
- * deixaria um JSON truncado, e o histórico inteiro do usuário viraria ilegível.
- *
- * <p>O JSON é desserializado para {@link RegistroEmDisco}, e não direto para {@link WaterEntry}. Um
- * arquivo editado à mão é entrada não confiável, e o Gson embrulha qualquer exceção do construtor
- * do <em>record</em> numa {@code RuntimeException} genérica — o que tornaria impossível distinguir
- * "arquivo adulterado" de um bug nosso. Com o DTO, a conversão é explícita e a validação de domínio
- * acontece em código que controlamos.
- *
- * <p><strong>Limitação conhecida:</strong> {@link #save(WaterEntry)} faz ler-alterar-gravar, o que
- * não é seguro entre duas instâncias do widget abertas ao mesmo tempo. O arquivo nunca fica
- * corrompido (a troca é atômica), mas um dos dois registros pode se perder. Tratado no próximo
- * ciclo.
+ * <p>Desserializa para {@link RegistroEmDisco}, não direto para {@link WaterEntry}: o Gson embrulha
+ * exceções do construtor do <em>record</em> numa {@code RuntimeException} genérica, indistinguível
+ * de um bug nosso — ver Hurdle #17.
  */
 public final class JsonIntakeRepository {
 
@@ -53,12 +42,9 @@ public final class JsonIntakeRepository {
   private final Path arquivo;
 
   /**
-   * Aponta o repositório para um diretório de dados.
-   *
-   * <p>O diretório não precisa existir ainda: ele é criado na primeira gravação.
+   * Aponta o repositório para um diretório, que é criado na primeira gravação.
    *
    * @param diretorioDeDados pasta onde o {@code entries.json} mora
-   * @throws NullPointerException se {@code diretorioDeDados} for nulo
    */
   public JsonIntakeRepository(Path diretorioDeDados) {
     this.diretorio = Objects.requireNonNull(diretorioDeDados, "O diretório não pode ser nulo.");
@@ -66,11 +52,10 @@ public final class JsonIntakeRepository {
   }
 
   /**
-   * Lê todos os registros já gravados, na ordem em que foram salvos.
+   * Lê todos os registros gravados, na ordem em que foram salvos.
    *
    * @return lista imutável; vazia se o arquivo ainda não existe
    * @throws CorruptedDataException se o arquivo existe mas não pôde ser interpretado
-   * @throws UncheckedIOException se a leitura do disco falhar
    */
   public List<WaterEntry> loadAll() {
     if (!Files.isRegularFile(arquivo)) {
@@ -82,24 +67,21 @@ public final class JsonIntakeRepository {
     } catch (IOException e) {
       throw new UncheckedIOException("Falha ao ler " + arquivo + ".", e);
     }
-    List<RegistroEmDisco> brutos;
     try {
-      brutos = GSON.fromJson(json, TIPO_DA_LISTA);
-    } catch (JsonParseException e) {
-      throw new CorruptedDataException("O arquivo " + arquivo + " não é um JSON válido.", e);
+      List<RegistroEmDisco> brutos = GSON.fromJson(json, TIPO_DA_LISTA);
+      if (brutos == null) {
+        return List.of();
+      }
+      return brutos.stream().map(this::converterParaDominio).toList();
+    } catch (JsonParseException | DateTimeParseException | InvalidVolumeException e) {
+      throw new CorruptedDataException("O arquivo " + arquivo + " não pôde ser lido.", e);
     }
-    if (brutos == null) {
-      return List.of();
-    }
-    return brutos.stream().map(this::converterParaDominio).toList();
   }
 
   /**
    * Acrescenta um registro ao histórico.
    *
    * @param registro consumo a gravar
-   * @throws NullPointerException se {@code registro} for nulo
-   * @throws UncheckedIOException se a gravação no disco falhar
    */
   public void save(WaterEntry registro) {
     Objects.requireNonNull(registro, "O registro não pode ser nulo.");
@@ -110,15 +92,9 @@ public final class JsonIntakeRepository {
 
   private WaterEntry converterParaDominio(RegistroEmDisco bruto) {
     if (bruto == null || bruto.date() == null || bruto.milliliters() == null) {
-      throw new CorruptedDataException(
-          "O arquivo " + arquivo + " tem registro incompleto: " + bruto + ".", null);
+      throw new CorruptedDataException("Registro incompleto em " + arquivo + ".", null);
     }
-    try {
-      return new WaterEntry(LocalDate.parse(bruto.date()), bruto.milliliters());
-    } catch (DateTimeParseException | InvalidVolumeException e) {
-      throw new CorruptedDataException(
-          "O arquivo " + arquivo + " tem registro inválido: " + bruto + ".", e);
-    }
+    return new WaterEntry(LocalDate.parse(bruto.date()), bruto.milliliters());
   }
 
   private void gravarAtomicamente(List<WaterEntry> todos) {
@@ -126,8 +102,7 @@ public final class JsonIntakeRepository {
     try {
       Files.createDirectories(diretorio);
       Path temporario = Files.createTempFile(diretorio, NOME_DO_ARQUIVO, ".tmp");
-      Files.writeString(
-          temporario, GSON.toJson(paraGravar, TIPO_DA_LISTA), StandardCharsets.UTF_8);
+      Files.writeString(temporario, GSON.toJson(paraGravar, TIPO_DA_LISTA), StandardCharsets.UTF_8);
       Files.move(temporario, arquivo, StandardCopyOption.ATOMIC_MOVE);
     } catch (IOException e) {
       throw new UncheckedIOException("Falha ao gravar " + arquivo + ".", e);
@@ -135,11 +110,9 @@ public final class JsonIntakeRepository {
   }
 
   /**
-   * O contrato do arquivo em disco, separado do modelo de domínio.
+   * Contrato do arquivo em disco, separado do modelo de domínio.
    *
-   * <p>Os tipos são frouxos de propósito — {@code String} e {@code Integer}, ambos aceitando nulo —
-   * porque é exatamente isso que um arquivo editado à mão pode conter. Apertar aqui só empurraria a
-   * falha para dentro do Gson, onde ela vira uma {@code RuntimeException} sem contexto.
+   * <p>Tipos frouxos de propósito: é o que um arquivo editado à mão pode conter.
    *
    * @param date data em ISO-8601
    * @param milliliters volume em mililitros

@@ -28,6 +28,7 @@
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
     <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+    <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
 
     <jacoco.line.minimum>0.85</jacoco.line.minimum>
   </properties>
@@ -155,6 +156,29 @@
                   </limits>
                 </rule>
               </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Jar executavel unico: sem isso, rodar o widget exigiria montar o classpath com o
+           caminho do Gson no ~/.m2 a mao, em cada uma das duas maquinas. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>${maven-shade-plugin.version}</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer
+                    implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>io.github.augustodbatista.watertracker.App</mainClass>
+                </transformer>
+              </transformers>
             </configuration>
           </execution>
         </executions>
