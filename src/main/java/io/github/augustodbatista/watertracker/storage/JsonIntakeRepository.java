@@ -90,6 +90,37 @@ public final class JsonIntakeRepository {
     gravarAtomicamente(todos);
   }
 
+  /**
+   * Remove <em>uma</em> ocorrência do registro informado, para desfazer um clique errado.
+   *
+   * <p>Uma só, e não todas as iguais: dois copos de 250 ml no mesmo dia são registros idênticos, e
+   * quem errou um clique quer desfazer aquele clique, não o dia inteiro. Remover registro que não
+   * existe não é erro — nada muda.
+   *
+   * @param registro consumo a desfazer
+   */
+  public void remove(WaterEntry registro) {
+    Objects.requireNonNull(registro, "O registro não pode ser nulo.");
+    List<WaterEntry> todos = new ArrayList<>(loadAll());
+    if (todos.remove(registro)) {
+      gravarAtomicamente(todos);
+    }
+  }
+
+  /**
+   * Apaga todos os registros de um dia, preservando os demais.
+   *
+   * @param dia dia a zerar
+   */
+  public void clearDay(LocalDate dia) {
+    Objects.requireNonNull(dia, "O dia não pode ser nulo.");
+    List<WaterEntry> todos = loadAll();
+    List<WaterEntry> restantes = todos.stream().filter(r -> !dia.equals(r.date())).toList();
+    if (restantes.size() != todos.size()) {
+      gravarAtomicamente(restantes);
+    }
+  }
+
   private WaterEntry converterParaDominio(RegistroEmDisco bruto) {
     if (bruto == null || bruto.date() == null || bruto.milliliters() == null) {
       throw new CorruptedDataException("Registro incompleto em " + arquivo + ".", null);
