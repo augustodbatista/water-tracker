@@ -15,6 +15,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
+import java.awt.Image;
 import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
@@ -22,6 +23,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
 import java.time.LocalDate;
 import java.util.List;
 import javax.swing.BorderFactory;
@@ -41,6 +43,7 @@ import javax.swing.JSpinner;
 import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
+import javax.swing.Timer;
 
 /** Janela sem borda, sempre no topo, arrastável pelo corpo. */
 final class WaterTrackerWindow extends JFrame {
@@ -62,6 +65,11 @@ final class WaterTrackerWindow extends JFrame {
   private final transient JsonIntakeRepository registros;
   private final transient DailyGoalStore metas;
 
+  /** De quanto em quanto tempo se verifica se o dia virou. */
+  private static final int INTERVALO_DA_VIRADA_MS = 60_000;
+
+  private LocalDate diaExibido = LocalDate.now();
+
   private final JLabel total = new JLabel("", SwingConstants.CENTER);
   private final JLabel metaEscrita = new JLabel("", SwingConstants.CENTER);
   private final JProgressBar progresso = new JProgressBar();
@@ -74,6 +82,11 @@ final class WaterTrackerWindow extends JFrame {
     setAlwaysOnTop(true);
     setDefaultCloseOperation(EXIT_ON_CLOSE);
     setTitle("Water Tracker");
+    setIconImages(List.of(gotaComoImagem(16), gotaComoImagem(32), gotaComoImagem(48)));
+
+    // O widget fica aberto o dia todo, entao ele precisa perceber a meia-noite sozinho: sem isso,
+    // as 8h da manha ele ainda mostraria o total de ontem ate o usuario clicar em alguma coisa.
+    new Timer(INTERVALO_DA_VIRADA_MS, evento -> verificarViradaDoDia()).start();
 
     JPanel raiz = new JPanel(new BorderLayout(0, 10));
     raiz.setBackground(FUNDO);
@@ -314,7 +327,14 @@ final class WaterTrackerWindow extends JFrame {
     }
   }
 
+  private void verificarViradaDoDia() {
+    if (!LocalDate.now().equals(diaExibido)) {
+      atualizar();
+    }
+  }
+
   private void atualizar() {
+    diaExibido = LocalDate.now();
     long consumido;
     try {
       consumido = new DailyIntake(LocalDate.now(), registros.loadAll()).totalMilliliters();
@@ -361,6 +381,16 @@ final class WaterTrackerWindow extends JFrame {
   private void posicionarNoCantoInferiorDireito() {
     var area = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
     setLocation(area.x + area.width - getWidth() - 24, area.y + area.height - getHeight() - 24);
+  }
+
+  /** Rende a gota num bitmap, para o ícone da janela e da barra de tarefas. */
+  private static Image gotaComoImagem(int tamanho) {
+    BufferedImage imagem = new BufferedImage(tamanho, tamanho, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g2 = imagem.createGraphics();
+    int largura = Math.round(tamanho * 0.62f);
+    new GotaDagua(largura, tamanho, AGUA).paintIcon(null, g2, (tamanho - largura) / 2, 0);
+    g2.dispose();
+    return imagem;
   }
 
   /**
