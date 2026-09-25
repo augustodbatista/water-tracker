@@ -26,10 +26,10 @@ Princípios que governam decisões de produto:
 | UI | **Swing** | JDK | Já vem no JDK: zero dependência por plataforma. JavaFX exigiria artefatos win/linux separados |
 | Persistência | **JSON** (Gson) | 2.14.0 | ~10 registros/dia. SQLite traria binário nativo por plataforma para guardar `data + ml`. Única dependência de produção, confinada a `storage/` |
 | Build | Maven | 3.9.16 | — |
-| Testes | JUnit Jupiter | 6.1.2 | via `junit-bom` |
+| Testes | JUnit Jupiter | 6.1.3 | via `junit-bom` |
 | Cobertura | JaCoCo | 0.8.15 | — |
-| Lint | Checkstyle | plugin 3.6.0 / tool 13.9.0 | `google_checks.xml` embutido |
-| SAST | SpotBugs + FindSecBugs | 4.10.3.0 / 1.14.0 | Roda offline, em segundos |
+| Lint | Checkstyle | plugin 3.6.0 / tool 14.1.0 | `google_checks.xml` embutido |
+| SAST | SpotBugs + FindSecBugs | 4.10.4.0 / 1.14.0 | Roda offline, em segundos |
 | Auditoria de deps | Dependabot | — | Fora do build (ver Hurdle #9) |
 | CI | GitHub Actions | matriz `ubuntu-latest` + `windows-latest` | Prova o cross-platform a cada push |
 
