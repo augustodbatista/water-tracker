@@ -37,7 +37,7 @@ Princípios que governam decisões de produto:
 
 | Item | Valor | Nota |
 |---|---|---|
-| `WATER_TRACKER_HOME` | *(opcional)* | Override do diretório de dados. **Validar contra path traversal antes de usar** (ciclo 2) |
+| `WATER_TRACKER_HOME` | **não implementada** | Planejada como override do diretório de dados, mas nunca entrou no código: `App.java` usa sempre `~/.water-tracker`. Se for implementada, rever a seção 10 antes |
 | Diretório de dados | `System.getProperty("user.home") + /.water-tracker/` | Funciona nos dois SOs |
 | Arquivo de registros | `entries.json`, UTF-8 | Escrita atômica (write-temp + `ATOMIC_MOVE`) |
 | Arquivo da meta | `daily-goal.txt` | Só o número, sem JSON: é um inteiro. Faixa aceita: 500 a 10000 ml |
@@ -210,7 +210,7 @@ Registrado explicitamente para que a regra "segurança é hábito" não vire cer
 **Não se aplica** (app local, single-user, sem rede e sem servidor): SSRF, rate limiting,
 autenticação, autorização, CSRF, injeção de SQL, gestão de segredos.
 
-**Path traversal em `WATER_TRACKER_HOME` foi reavaliado e também não se aplica.** Traversal
+**Path traversal em `WATER_TRACKER_HOME` (variável planejada, ainda não implementada) foi reavaliado e também não se aplica.** Traversal
 pressupõe entrada controlada por terceiro escapando de um sandbox. Aqui quem define a variável é o
 próprio dono da máquina, que já pode escrever onde quiser — não há fronteira de privilégio a
 atravessar. Validar que o caminho é utilizável faz sentido; construir defesa anti-traversal seria
