@@ -27,7 +27,7 @@
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
     <spotbugs-maven-plugin.version>4.10.4.0</spotbugs-maven-plugin.version>
-    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+    <jacoco-maven-plugin.version>0.8.16</jacoco-maven-plugin.version>
     <maven-shade-plugin.version>3.6.2</maven-shade-plugin.version>
 
     <jacoco.line.minimum>0.85</jacoco.line.minimum>
